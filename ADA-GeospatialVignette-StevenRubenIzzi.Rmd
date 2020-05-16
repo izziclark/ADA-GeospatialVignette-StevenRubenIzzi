@@ -1,0 +1,99 @@
+---
+title: "ADA-GeospatialVignette-StevenRubenIzzi"
+output: html_document
+---
+Packages to install:
+```{r, message=FALSE}
+library(sf)
+library(sp)
+library(dplyr)
+library(ggmap)
+library(ggplot2)
+```
+## 1. Read in geospatial data (GPX)
+The {sf} package allows spatial objects to be stored as data frames that are easily manipulated with dplyr. The spatial geometry of a feature is stored in a list-column called geometry, which can be as complex as needed to store more geographic information in a single variable for each feature.
+
+However, the *st_read()* function can read in a number of different filetypes and automatically recognizes file suffixes. Use *st_drivers()* to print all file formats that can be read in by st_read().
+
+In this example, we will be loading in GPX files containing chimpanzee group movement data collected on a handheld GPS tracker by a researcher following on foot the members of two adjacent groups of chimpanzees in Kibale National Park, Uganda.
+```{r}
+f <- file.choose() # west tracks
+f2 <- file.choose() # east/central tracks
+```
+
+You can use *st_layers(f)* to print the layer types a file contains, along with the number of features and fields for each.
+```{r}
+st_layers(f)
+```
+The layer we are interested in here is "track_points", which we can specify with the *layer* argument when we read in our files with st_read():
+```{r}
+west_sf <- st_read(f, layer = "track_points")
+class(west) # data is loaded in as an "sf" dataframe
+west <- as_tibble(west_sf)
+# Repeat for east/central group tracks
+eastcent_sf <- st_read(f2, layer = "track_points")
+eastcent <- as_tibble(eastcent_sf)
+```
+We can do an inital visualization of our data using the *plot* function. *st_geometry()* pulls only the geometry column, which can be useful for visualization, and may be required for some layer types or file formats. Our track_point data does not plot without this function.
+```{r}
+plot(st_geometry(west))
+```
+
+For further analysis and prettier mapping with other packages, it may be useful to store the data in a simple tibble. We can extract longitude and latitude from the sf geometry column using the *st_coordinates()* function, which stores longitude (X) and latitude (Y) in a matrix. We will use these to create a tibble containing the time stamp, longitude, and latitude of each track_points.
+```{r}
+longlat <- st_coordinates(west_sf$geometry) # coordinates extracted from sf geometry column into matrix XY
+west2 <- tibble(time = west_sf$time, longitude = longlat[,1], latitude = longlat[,2])
+```
+
+## 2. Create maps using {ggmap}
+{ggmap} allows us to interact with Google Maps while building maps in a way similar to how we build plots in {ggplot2}. If you want to access Google's satellite maps in R, you must first register with your API key:
+```{r}
+register_google(key = "AIzaSyDLVTYKWa6uQzmOXgNW5GCCyAyNE2YOa5k")
+```
+For your own project, replace the key argument in register_google() with your own Maps Static API key, which you can generate by following the instructions here: https://developers.google.com/maps/documentation/javascript/get-api-key
+You may then need to fiddle with the settings to ensure that you don't get an error when trying to generate google maps.
+1) Under the APIs/Credentials tab, select your key and set "Application restrictions" to None and API restrictions to Restric key, selecting Maps Static API from the dropdown menu. Save.
+2) Go to the billing tab and enter billing information. You shouldn't actually be charged unless your API key gets a lot of traffic!
+
+Now that we have access, we can generate a map using the *get_map()* function, which takes arguments including location as the map's center, zoom, and maptype. Here we use satellite - other options include terrain, roadmap, and even watercolor! (https://www.rdocumentation.org/packages/ggmap/versions/3.0.0/topics/get_map)
+```{r}
+map <- get_map(location = c(lon = 30.400000, lat = 0.489000), zoom = 15, maptype = "satellite")
+```
+We use *ggmap()* to view the map we've generated, and add other layers using "+", much as we would in {ggplot}.
+```{r}
+# So this does things but the output doesn't look much like the example?? anyway it's a start
+ggmap(map) + geom_density2d(data = west2, aes(x = longitude, y = latitude), colour = "#FFFFFF", size = 0.3) +
+  stat_density2d(data = west2, aes(x = longitude, y = latitude, fill = ..level.., alpha = ..level..), size = 0.01, bins = 60, geom = "polygon") +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_alpha(range = c(0, 0.3), guide = FALSE) +
+  geom_point(data = west2, aes(x = longitude, y = latitude,), colour = "#FFFFFF", pch = 16, size = 1)
+```
+
+```{r}
+# Adapted from code chunk I emailed you guys
+# still not sure how it interacts with the map, although I haven't tired grouping by date yet
+hulls <- west2 %>%
+   #dplyr::group_by(DATE2) %>%
+   do(.[chull(.[c('longitude', 'latitude')]), ])
+hulls
+```
+
+Ended up not getting it to work with get_map, but code for bounding box to define map boundaries
+```{r}
+bb <- st_bbox(west$geometry)
+# ggmap requires it to be stored as list with these variable names:
+bb_g <- c(left = bb$xmin, bottom = bb$ymin, right = bb$xmax, top = bb$ymax)
+bb_g <- c(left = bb[[1]], bottom = bb[[2]], right = bb[[3]], top = bb[[4]])
+```
+
+##Defining home range using minimum convex polygons (MCP) {adehabitat}
+##Defining home range using kernels?
+##Calculating home range overlap
+##Using point-in-polygon to predict group identity?
+
+Random notes for later maybe:
+# unclass for st_area() or st_length() which are not traditional vectors but rather have a class of units as metadata.
+# big_parks <- parks %>% filter(unclass(areas) > 30000)
+
+# resources
+https://r-spatial.github.io/sf/articles/sf1.html
