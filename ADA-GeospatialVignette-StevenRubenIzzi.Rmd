@@ -86,6 +86,74 @@ bb_g <- c(left = bb$xmin, bottom = bb$ymin, right = bb$xmax, top = bb$ymax)
 bb_g <- c(left = bb[[1]], bottom = bb[[2]], right = bb[[3]], top = bb[[4]])
 ```
 
+
+## 2. Fractal analysis using fractaldim
+
+One interesting method to quantify animal movement is with fractals. A fractal analysis will output a fractal dimension (D): a ratio that describes how the details of a pattern change as the scale at which they are measured decreases. As a result, the higher the D of a animal movement pattern, the more complex the pattern is. 
+
+To demonstrate how fractal D can change, we will use the NgogoTrees data set, which describes trees chimpanzees visited to feed. 
+
+```{r}
+#Import the data 
+f3 <- file.choose() # NgogoTrees.GPX
+feeding <- st_read(f3)
+```
+Lets split up the data by time, so we can compare trees chimps visited at three different time points.
+
+```{r}
+#Early timepoint
+early<-feeding%>%
+  filter(time<=as.Date("2019-03-15"))
+earlylong<-sapply(early$geometry,"[[", 2)
+earlylat<-sapply(early$geometry,"[[", 1)
+
+#Middle timepoint
+mid<-feeding%>%
+  filter(time>=as.Date("2019-03-15") & time<=as.Date("2019-05-01"))
+midlong<-sapply(mid$geometry,"[[", 2)
+midlat<-sapply(mid$geometry,"[[", 1)
+
+#Late timepoint
+late<-feeding%>%
+  filter(time>=as.Date("2019-05-01"))
+latelong<-sapply(late$geometry,"[[", 2)
+latelat<-sapply(late$geometry,"[[", 1)
+```
+
+Now use ggplot to see what these three timepoints look like: 
+
+```{r}
+ggplot(data=early,aes(earlylat,earlylong))+ 
+  geom_point()
+
+ggplot(data=mid,aes(midlat,midlong))+ 
+  geom_point()
+
+ggplot(data=late,aes(latelat,latelong))+ 
+  geom_point()
+```
+Now we can use fractaldim to calculate a D value for each of the three timepoints 
+
+```{r}
+#Early
+fd.estim.dctII(cbind(earlylat,earlylong),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
+
+#Middle
+fd.estim.dctII(cbind(midlat,midlong),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
+
+#Late
+fd.estim.dctII(cbind(latelat,latelong),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
+
+```
+The three timepoints vary slightly in terms of Fractal D, indicating that there may be a difference in how the animals are visiting their feeding trees over time. Given the middle timepoint had the lowest fractal D, it is possible that at that time of year the animals may be moving around from tree to tree less than at the other two times. 
+
+
+
+
+
+
+
+
 ##Defining home range using minimum convex polygons (MCP) {adehabitat}
 ##Defining home range using kernels?
 ##Calculating home range overlap
