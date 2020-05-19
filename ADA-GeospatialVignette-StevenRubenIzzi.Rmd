@@ -1,6 +1,13 @@
 ---
 title: "ADA-GeospatialVignette-StevenRubenIzzi"
-output: html_document
+output: html_vignette
+vignette: >
+  %\VignetteIndexEntry{"ADA-GeospatialVignette-StevenRubenIzzi"}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+fig_width: 12
+fig_height: 12
+fig_align: "center"
 ---
 This vignette demonstrates how to read in, visualize, and analyze geospatial data. Specifically, we will estimate home ranges and quantify movement using fractal analysis, based on GPS tracks from wild chimpanzees. Let's get started by installing the following packages:
 ```{r, message=FALSE}
@@ -94,6 +101,10 @@ alltracks.mcp
 # Plot
 plot(alltracks.sp, col = as.factor(alltracks.sp@data$id))
 plot(alltracks.mcp, col = alpha(1:5, 0.5), add = TRUE)
+
+our_function <- function(x) {
+  package::existing_function(x)
+}
 ```
   
 The east/central group has a larger home range (17.65 km^2^) than the west group (11.85 km^2^), which makes sense since the west group consists of about 70 chimpanzees, while east/central has about 130!
@@ -145,6 +156,14 @@ map_MCP <- ggmap(basemap) +
   geom_point(data = alltracks.geo, aes(x = longitude, y = latitude, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
   labs(x = "Longitude", y = "Latitude")
 map_MCP
+
+plot_HR <- function(tracks, polygons, basemap){
+  map_MCP <- ggmap::ggmap(basemap), 
+}
+layers <- function(file) {
+  sf::st_layers(file)
+}
+  
 ```
 
 And we'll do the same for our **kernel density estimates!**
