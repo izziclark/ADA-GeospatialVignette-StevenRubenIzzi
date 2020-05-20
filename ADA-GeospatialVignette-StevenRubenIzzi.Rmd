@@ -8,7 +8,7 @@ vignette: >
 ---
 This vignette demonstrates how to read in, visualize, and analyze geospatial data. Specifically, we will estimate home ranges and quantify movement using fractal analysis, based on GPS tracks from wild chimpanzees. Let's get started by installing the following packages:
 ```{r, message=FALSE}
-# library(GeospatialVignette) ## load in our package
+library(GeospatialVignette)
 library(sf)
 library(sp)
 library(tidyverse)
@@ -19,20 +19,14 @@ library(fractaldim)
 ## 1. Read in geospatial data (GPX)
 The **{sf}** package allows spatial objects to be stored as data frames that are easily manipulated with {dplyr}. The spatial geometry of a feature is stored in a list-column called geometry, which can be as complex as needed to store more geographic information in a single variable for each feature. The **st_read( )** function can read in a number of different filetypes and automatically recognizes file suffixes. Use **st_drivers( )** to print all file formats that can be read in by st_read( ).
 
-In this example, we will be loading in GPX files containing chimpanzee group movement data collected from January to May 2019 on a handheld GPS tracker by a researcher on foot following the members of two adjacent groups of chimpanzees (Central/East and West) in Kibale National Park, Uganda.
+In this example, we will be using the data "PartyTracks_CentralEast" and "PartyTracks_West", which are GPX files containing chimpanzee group movement data collected from January to May 2019 on a handheld GPS tracker by a researcher on foot following the members of two adjacent groups of chimpanzees (Central/East and West) in Kibale National Park, Uganda. **st_layers( )** prints the layer types a file contains, along with the number of features and fields for each.
 ```{r}
-f1 <- "PartyTracks_West.GPX"
-f2 <- "PartyTracks_CentralEast.GPX"
-```
-
-**st_layers( )** prints the layer types a file contains, along with the number of features and fields for each.
-```{r}
-st_layers(f1)
+st_layers(PartyTracks_West)
 ```
 The layer we are interested in here is "track_points", which we can specify with the **layer** argument when we read in our files with **st_read( ).**
 ```{r, message=FALSE}
-west.sf <- st_read(f1, layer = "track_points")
-eastcent.sf <- st_read(f2, layer = "track_points")
+eastcent.sf <- st_read(PartyTracks_CentralEast, layer = "track_points")
+west.sf <- st_read(PartyTracks_West, layer = "track_points")
 ```
 We can do an inital visualization of our data using the **plot** function. **st_geometry( )** pulls only the geometry column, which can be useful for visualization, and may be required for some layer types or file formats. Our track_point data does not plot without this function.
 ```{r}
@@ -103,14 +97,14 @@ mcp_map(sp = alltracks.sp)
   
 Here is the code for the function:
 ```{r, eval = FALSE}
+mcp_map(sp = alltracks.sp)
 mcp_map <- function(sp, perc = 95, units = "km2"){
   # Generate mcp
   sp.mcp <- adehabitatHR::mcp(sp, percent = perc, unout = units)
-  print(sp.mcp)
   # Convert to geographic coordinates
   spgeo <- sp::spTransform(sp, CRS("+proj=longlat"))
   mcpgeo <- sp::spTransform(sp.mcp, CRS("+proj=longlat"))
-  # Generate basemap, specifying bounding box (based on spgeo) and zoom level
+  # Generate basemap using bounding box from spgeo
   basemap <- ggmap::get_stamenmap(bbox = c(
     left = min(spgeo@coords[,1])-0.005,
     bottom = min(spgeo@coords[,2])-0.005,
@@ -126,6 +120,7 @@ mcp_map <- function(sp, perc = 95, units = "km2"){
     ggplot2::geom_point(data = spgeo.df, ggplot2::aes(x = x, y = y, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
     labs(x = "Longitude", y = "Latitude")
   map.mcp
+  print(sp.mcp)
 }
 ```
 
@@ -152,7 +147,6 @@ kde_map <- function(sp, perc = 95, units = "km2"){
   sp.kernels <- adehabitatHR::kernelUD(sp, h = "href")
   # Convert kernels to SpatialPolygons
   sp.kde <- adehabitatHR::getverticeshr(sp.kernels, percent = perc, unout = units)
-  sp.kde
   # Convert to geographic coordinates
   spgeo <- sp::spTransform(sp, CRS("+proj=longlat"))
   kdegeo <- sp::spTransform(sp.kde, CRS("+proj=longlat"))
@@ -172,6 +166,7 @@ kde_map <- function(sp, perc = 95, units = "km2"){
     ggplot2::geom_point(data = spgeo.df, ggplot2::aes(x = x, y = y, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
     labs(x = "Longitude", y = "Latitude")
   map.kde
+  print(sp.kde)
 }
 ```
 Notice that both kernel density estimates of area are lower than those produced by generating minimum convex polygons. East/central has decreased by over 2 km^2^, suggesting they utilize a smaller core area more heavily.
@@ -179,12 +174,11 @@ Notice that both kernel density estimates of area are lower than those produced 
 ## 4. Fractal analysis using {fractaldim}
 Finally, we'll take a look at fractal analysis, which is one method used to quantify animal movement. A fractal analysis will output a fractal dimension (D): a ratio that describes how the details of a pattern change as the scale at which they are measured decreases. As a result, the higher the D of an animal movement pattern, the more complex the pattern is. 
 
-To demonstrate how fractal D can change, we will use the **{fractaldim}** package on the NgogoTrees dataset, which contains waypoints of trees the chimpanzees visited to feed, along with a timestamp of when they were first observed feeding at each tree.
+To demonstrate how fractal D can change, we will use the **{fractaldim}** package on the "NgogoTrees" dataset, which is a GPX file containing waypoints of trees the chimpanzees visited to feed, along with a timestamp of when they were first observed feeding at each tree.
 
 ```{r}
 #Import the data 
-f3 <- "NgogoTrees.GPX"
-feeding <- st_read(f3, layer = "waypoints")
+feeding <- st_read(NgogoTrees, layer = "waypoints")
 ```
 
 Let's split up the data by time, so we can compare trees chimps visited at three different time points.

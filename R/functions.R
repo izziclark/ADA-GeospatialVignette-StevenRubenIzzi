@@ -8,11 +8,9 @@
 #' @examples
 #' mcp_map(sp = trackpoints, perc = 90, units = "m2")
 
-mcp_map(sp = alltracks.sp)
 mcp_map <- function(sp, perc = 95, units = "km2"){
   # Generate mcp
   sp.mcp <- adehabitatHR::mcp(sp, percent = perc, unout = units)
-  print(sp.mcp)
   # Convert to geographic coordinates
   spgeo <- sp::spTransform(sp, CRS("+proj=longlat"))
   mcpgeo <- sp::spTransform(sp.mcp, CRS("+proj=longlat"))
@@ -32,6 +30,7 @@ mcp_map <- function(sp, perc = 95, units = "km2"){
     ggplot2::geom_point(data = spgeo.df, ggplot2::aes(x = x, y = y, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
     labs(x = "Longitude", y = "Latitude")
   map.mcp
+  print(sp.mcp)
 }
 
 #' @title kde_map
@@ -49,7 +48,6 @@ kde_map <- function(sp, perc = 95, units = "km2"){
   sp.kernels <- adehabitatHR::kernelUD(sp, h = "href")
   # Convert kernels to SpatialPolygons
   sp.kde <- adehabitatHR::getverticeshr(sp.kernels, percent = perc, unout = units)
-  print(sp.kde)
   # Convert to geographic coordinates
   spgeo <- sp::spTransform(sp, CRS("+proj=longlat"))
   kdegeo <- sp::spTransform(sp.kde, CRS("+proj=longlat"))
@@ -69,6 +67,7 @@ kde_map <- function(sp, perc = 95, units = "km2"){
     ggplot2::geom_point(data = spgeo.df, ggplot2::aes(x = x, y = y, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
     labs(x = "Longitude", y = "Latitude")
   map.kde
+  print(sp.kde)
 }
 
 #' @title fractal_plot
