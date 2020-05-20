@@ -5,12 +5,10 @@ vignette: >
   %\VignetteIndexEntry{"ADA-GeospatialVignette-StevenRubenIzzi"}
   %\VignetteEngine{knitr::rmarkdown}
   \usepackage[utf8]{inputenc}
-fig_width: 12
-fig_height: 12
-fig_align: "center"
 ---
 This vignette demonstrates how to read in, visualize, and analyze geospatial data. Specifically, we will estimate home ranges and quantify movement using fractal analysis, based on GPS tracks from wild chimpanzees. Let's get started by installing the following packages:
 ```{r, message=FALSE}
+# library(GeospatialVignette) ## load in our package
 library(sf)
 library(sp)
 library(tidyverse)
@@ -51,16 +49,16 @@ longlat <- st_coordinates(eastcent.sf$geometry)
 eastcent <- tibble(time = eastcent.sf$time, longitude = longlat[,1], latitude = longlat[,2])
 ```
 
-## 2. Defining home ranges using {adehabitatHR}
+## 2. Defining home ranges using {adehabitatHR} and mapping using {ggmap}
 One thing animal movement tracking data can tell us about is home ranges. Here we explore two ways to define chimpanzee home ranges: minimum convex polygons and kernel density estimation. Both can be done with the **{adehabitat}** package - some helpful vignettes can be found here: (https://mran.microsoft.com/snapshot/2017-12-11/web/packages/adehabitatHR/vignettes/adehabitatHR.pdf)
 
 ### 2.1 Minimum convex polygons (MCP)
 A minimum convex polygon is the smallest polygon around a set of points, where all interior angles are less than 180 degrees. We can create this with the **mcp( )** function from the **{adehabitatHR}** package. First, we must convert our data to a SpatialPointsDataFrame (SPDF), which requires the **{sp}** package's **coordinates( )** function.
 ```{r}
 # New tibble containing id, long, lat
-west.sp <- tibble(id = "west", longitude = west$longitude, latitude = west$latitude)
+west.sp <- tibble(id = "west", x = west$longitude, y = west$latitude)
 # Convert to SPDF by defining coordinates
-coordinates(west.sp) <- ~longitude + latitude
+coordinates(west.sp) <- ~x + y
 class(west.sp) # west.sp is now an SPDF!
 ```
 We also need to set the correct coordinate system for our data, which were recorded in the standard WGS84 datum using geographic coordinates (longitude and latitude). UTM (Universal Transverse Mercator) is another coordinate system in which geographic locations are measured by distance (in meters) from the central meridian of the UTM zone in which it lies. Kibale National Park, Uganda, lies in Zone 36N (https://spatialreference.org/ref/epsg/wgs-84-utm-zone-36n/). We we must first tell our SPDF that it's in WGS84 using **proj4string( ),** then transform our longitudes and latitudes to UTM eastings and northings (which are in meters) using **spTransform( ).** Every coordinate system has a standardized unique EPSG code that can be used as shorthand in the **CRS( )** coordinate system function. Read more about coordinate systems and reprojecting vector data in R here:
@@ -82,102 +80,103 @@ plot(west.mcp, col = alpha(1:5, 0.5), add = TRUE) # set transparency with alpha
 ```
 
 We can also see how the MCP increases in area as we include a greater percentage of points (from 50 to 100 by increments of 5) using **mcp.area( )** and setting the **plotit** argument to true. Note that home range size is in m^2^, not km^2^.
-```{r}
+```{r, message = FALSE}
 mcp.area(west.sp, percent = seq(50, 100, by = 5), plotit = TRUE)
 ```
 
-And now we'll repeat some of these steps for the central/east chimpanzee group, but combine the SPDF's of both groups by simply using the **rbind( )** function. **mcp( )** then automatically uses the **id** column to generate a polygon for each group in the data frame. We can visualize the home ranges and their overlap by using plot() and setting the colors by id.
+And now we'll repeat some of these steps for the central/east chimpanzee group, but combine the SPDF's of both groups by simply using the **rbind( )** function. **mcp( )** can now automatically use the **id** column to generate a polygon for each group in the data frame.
 ```{r}
 # Create SPDF
-eastcent.sp <- tibble(id = "eastcent", longitude = eastcent$longitude, latitude = eastcent$latitude)
-coordinates(eastcent.sp) <- ~longitude + latitude
+eastcent.sp <- tibble(id = "eastcent", x = eastcent$longitude, y = eastcent$latitude)
+coordinates(eastcent.sp) <- ~x + y
 # Reproject coordinate system to UTM Zone 36N
 proj4string(eastcent.sp) <- CRS('+init=epsg:4326')
 eastcent.sp <- spTransform(eastcent.sp, CRS('+init=epsg:32636'))
 # Combine west and eastcentral SPDF's
 alltracks.sp <- rbind(west.sp, eastcent.sp)
-alltracks.mcp <- mcp(alltracks.sp, percent = 95, unout = "km2")
-alltracks.mcp
-# Plot
-plot(alltracks.sp, col = as.factor(alltracks.sp@data$id))
-plot(alltracks.mcp, col = alpha(1:5, 0.5), add = TRUE)
+```
 
-our_function <- function(x) {
-  package::existing_function(x)
-}
+This time, instead of running mcp( ) and plot( ), we will use a new function **mcp_map( )** included in our **{GeospatialVignette}** package that takes the {sp} dataframe containing id and coordinates, uses the **mcp()** function to print estimated home range areas and create a map of points and associated minimum convex polygons using {ggmap}. In addition to the SpatialPointsDataFrame, it takes an argument *perc* for the percentage of points to include in the polygon (default is 95, meaning 5% of outlier points are excluded). It also takes *units* for the area output (default is "km2", alternatives are "m2" and "ha" for hectares).
+```{r, message=FALSE}
+mcp_map(sp = alltracks.sp)
 ```
   
+Here is the code for the function:
+```{r, eval = FALSE}
+mcp_map <- function(sp, perc = 95, units = "km2"){
+  # Generate mcp
+  sp.mcp <- adehabitatHR::mcp(sp, percent = perc, unout = units)
+  print(sp.mcp)
+  # Convert to geographic coordinates
+  spgeo <- sp::spTransform(sp, CRS("+proj=longlat"))
+  mcpgeo <- sp::spTransform(sp.mcp, CRS("+proj=longlat"))
+  # Generate basemap, specifying bounding box (based on spgeo) and zoom level
+  basemap <- ggmap::get_stamenmap(bbox = c(
+    left = min(spgeo@coords[,1])-0.005,
+    bottom = min(spgeo@coords[,2])-0.005,
+    right = max(spgeo@coords[,1])+0.005,
+    top = max(spgeo@coords[,2])+0.005),
+    zoom = 12)
+  # Turn the spatial data frame of points into a regular dataframe for plotting
+  spgeo.df <- data.frame(spgeo@coords, id = spgeo@data$id)
+  # Map using {ggmap}
+  map.mcp <- ggmap::ggmap(basemap) + 
+    # "fortify" polygon layer to add geometry to the dataframe
+    ggplot2::geom_polygon(data = ggplot2::fortify(mcpgeo), ggplot2::aes(long, lat, colour = id, fill = id), alpha = 0.3) +
+    ggplot2::geom_point(data = spgeo.df, ggplot2::aes(x = x, y = y, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
+    labs(x = "Longitude", y = "Latitude")
+  map.mcp
+}
+```
+
 The east/central group has a larger home range (17.65 km^2^) than the west group (11.85 km^2^), which makes sense since the west group consists of about 70 chimpanzees, while east/central has about 130!
 
 ### 2.2 Kernel density estimation (KDE)
 While minimum convex polygons are a quick and easy way to visualize the bounds of animal movement, they tend to overestimate home ranges by including areas that are not actually used. A more accurate method is kernel density estimation, which maps actual utilization distribution (UD) of a habitat. A kernel uses a function to predict how likely use is for each pixel within a grid. The function includes a smoothing factor or bandwidth *h*, which is the distance over which a data point can influence UD - a larger *h* means more smoothing and an increased estimate of home range size.
 
-We can use the **kernelUD( )** function, also included in **{adehabitatHR}**, on our combined SpatialPointsDataFrame to generate kernels for both east/central and west chimpanzee groups, then visualize these using **image( )**. The default *h* is the "reference bandwidth" based on standard deviations of x and y coordinates and total number of relocations or points in our dataset. 
+We can use the **kernelUD( )** function, also included in **{adehabitatHR}**, on our combined SpatialPointsDataFrame to generate kernels for both east/central and west chimpanzee groups, then visualize these using **image( )**. The default *h* is the "reference bandwidth" based on standard deviations of x and y coordinates and total number of relocations or points in our dataset.
 ```{r}
 alltracks.kernel <- kernelUD(alltracks.sp, h = "href") # href = the reference bandwidth
 image(alltracks.kernel)
 ```
   
-The kernels alone are difficult to interpret, but we can convert them to polygons in a SpatialPolygonsDataFrame with the **getverticeshr( )** function, which takes arguments similar to **mcp( )**. We use the default **percent** of 95 so that 95% contour lines are used (95% of estimated distribution). We can plot to visualize the home range polygons of each group and use **print( )** to return their areas.
-```{r}
-kernel.poly <- getverticeshr(alltracks.kernel, percent = 95, unout = "km2")
-plot(kernel.poly)
-print(kernel.poly)
+The kernels alone are difficult to interpret, but we can use our handy dandy **kde_map()** function, which converts them to polygons with the **getverticeshr( )** function from **{adehabitatHR}**. This takes a default **percent** of 95 so that 95% contour lines are used (95% of estimated distribution), as well as units for displaying polygon areas. **kde_map( )** also maps the track points and polygons using **{ggmap}**, much like **mcp_map()**.
+```{r, message = FALSE}
+kde_map(sp = alltracks.sp)
+```
+  
+And here is what's going on under the hood:
+```{r, eval = FALSE}
+kde_map <- function(sp, perc = 95, units = "km2"){
+  # Generate kernels
+  sp.kernels <- adehabitatHR::kernelUD(sp, h = "href")
+  # Convert kernels to SpatialPolygons
+  sp.kde <- adehabitatHR::getverticeshr(sp.kernels, percent = perc, unout = units)
+  sp.kde
+  # Convert to geographic coordinates
+  spgeo <- sp::spTransform(sp, CRS("+proj=longlat"))
+  kdegeo <- sp::spTransform(sp.kde, CRS("+proj=longlat"))
+  # Generate basemap using bounding box from spgeo
+  basemap <- ggmap::get_stamenmap(bbox = c(
+    left = min(spgeo@coords[,1])-0.005,
+    bottom = min(spgeo@coords[,2])-0.005,
+    right = max(spgeo@coords[,1])+0.005,
+    top = max(spgeo@coords[,2])+0.005),
+    zoom = 12)
+  # Turn the spatial data frame of points into a regular dataframe for plotting
+  spgeo.df <- data.frame(spgeo@coords, id = spgeo@data$id)
+  # Map using {ggmap}
+  map.kde <- ggmap::ggmap(basemap) + 
+    # "fortify" polygon layer to add geometry to the dataframe
+    ggplot2::geom_polygon(data = ggplot2::fortify(kdegeo), ggplot2::aes(long, lat, colour = id, fill = id), alpha = 0.3) +
+    ggplot2::geom_point(data = spgeo.df, ggplot2::aes(x = x, y = y, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
+    labs(x = "Longitude", y = "Latitude")
+  map.kde
+}
 ```
 Notice that both kernel density estimates of area are lower than those produced by generating minimum convex polygons. East/central has decreased by over 2 km^2^, suggesting they utilize a smaller core area more heavily.
 
-## 3. Mapping tracks and home ranges using {ggmap}
-We can create nicer maps with geographic referencing using **{ggmap}**, a package that allows us to interact with Google Maps while building maps in a way similar to how we build plots in **{ggplot2}**.  
-Code adapted from: https://jamesepaterson.github.io/jamespatersonblog/01_trackingworkshop_formatting
-
-We can generate a basemap using the **get_stamenmap( )** function, which allows us to specify a bounding box and zoom level for our map using min and max coordinates from our dataset. First, we must transform our **{sp}** objects back into geographic coordinates rather than UTM.
-```{r, message=FALSE}
-# Transform to longlat coordinates
-alltracks.spgeo <- spTransform(alltracks.sp, CRS("+proj=longlat"))
-alltracks.mcpgeo <- spTransform(alltracks.mcp, CRS("+proj=longlat"))
-alltracks.kgeo <- spTransform(kernel.poly, CRS("+proj=longlat"))
-# Generate basemap
-basemap <- get_stamenmap(bbox = c(
-  left = min(alltracks.spgeo@coords[,1])-0.005,
-  bottom = min(alltracks.spgeo@coords[,2])-0.005,
-  right = max(alltracks.spgeo@coords[,1])+0.005,
-  top = max(alltracks.spgeo@coords[,2])+0.005),
-  zoom = 12)
-```
-
-Now we're ready to map by building up from **ggmap(basemap)** with **minimum convex polygons** and trackpoints for each group.
-```{r, message=FALSE}
-# Turn the spatial data frame of points into a regular dataframe for plotting
-alltracks.geo <- data.frame(alltracks.spgeo@coords, id = alltracks.spgeo@data$id)
-# Map of home ranges using minimum convex polygons
-map_MCP <- ggmap(basemap) + 
-  # "fortify" polygon layer to add geometry to the dataframe
-  geom_polygon(data = fortify(alltracks.mcpgeo), aes(long, lat, colour = id, fill = id), alpha = 0.3) + 
-  geom_point(data = alltracks.geo, aes(x = longitude, y = latitude, colour = id), alpha = 0.01, pch = 20)  + # set transparency using alpha and smaller point size use pch.
-  labs(x = "Longitude", y = "Latitude")
-map_MCP
-
-plot_HR <- function(tracks, polygons, basemap){
-  map_MCP <- ggmap::ggmap(basemap), 
-}
-layers <- function(file) {
-  sf::st_layers(file)
-}
-  
-```
-
-And we'll do the same for our **kernel density estimates!**
-```{r, message=FALSE}
-# Map using home range polygons generated from kernel density estimates
-map_KDE <- ggmap(basemap) + 
-  geom_polygon(data = fortify(alltracks.kgeo), aes(long, lat, colour = id, fill = id), alpha = 0.3) + 
-  geom_point(data = alltracks.geo, aes(x = longitude, y = latitude, colour = id), alpha = 0.01, pch = 20)  + 
-  labs(x = "Longitude", y = "Latitude")
-map_KDE
-```
-  
 ## 4. Fractal analysis using {fractaldim}
-
 Finally, we'll take a look at fractal analysis, which is one method used to quantify animal movement. A fractal analysis will output a fractal dimension (D): a ratio that describes how the details of a pattern change as the scale at which they are measured decreases. As a result, the higher the D of an animal movement pattern, the more complex the pattern is. 
 
 To demonstrate how fractal D can change, we will use the **{fractaldim}** package on the NgogoTrees dataset, which contains waypoints of trees the chimpanzees visited to feed, along with a timestamp of when they were first observed feeding at each tree.
@@ -187,6 +186,7 @@ To demonstrate how fractal D can change, we will use the **{fractaldim}** packag
 f3 <- "NgogoTrees.GPX"
 feeding <- st_read(f3, layer = "waypoints")
 ```
+
 Let's split up the data by time, so we can compare trees chimps visited at three different time points.
 ```{r}
 #Early timepoint
@@ -208,32 +208,23 @@ latelong <- sapply(late$geometry,"[[", 2)
 latelat <- sapply(late$geometry,"[[", 1)
 ```
 
-Now use ggplot to see what these three timepoints look like: 
-```{r}
-ggplot(data=early,aes(earlylat,earlylong))+ 
-  geom_point()
-
-ggplot(data=mid,aes(midlat,midlong))+ 
-  geom_point()
-
-ggplot(data=late,aes(latelat,latelong))+ 
-  geom_point()
+Now we will use a function called **fractal.map( )** from our {GeospatialVignette} package, which makes a simple plot of the coordinates using ggplot, then uses the **fd.estim.dctII( )** function from **{fractaldim}** to conduct a fractal analysis and compute a D value. We will run this on each of the three timepoints. 
+```{r, message = FALSE}
+fractal_plot(early,earlylat,earlylong)
+fractal_plot(mid,midlat,midlong)
+fractal_plot(late,latelat,latelong)
 ```
   
-Now we can use fractaldim to calculate a D value for each of the three timepoints. 
-```{r}
-#Early
-fd.estim.dctII(cbind(earlylat,earlylong),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
+The three timepoints vary slightly in terms of Fractal D, indicating that there may be a difference in how the animals are visiting their feeding trees over time. Given the middle timepoint had the lowest fractal D, it is possible that at that time of year the animals may be moving around from tree to tree less than at the other two times.
 
-#Middle
-fd.estim.dctII(cbind(midlat,midlong),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
-
-#Late
-fd.estim.dctII(cbind(latelat,latelong),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
-
+And here is the code for the **fractal.plot()** function:
+```{r, eval = FALSE}
+fractal_plot <- function(d,latitude,longitude) {
+  plot1 <- ggplot2::ggplot(data = d,  ggplot2::aes(latitude,longitude)) + ggplot2::geom_point()
+  fractalplot <- fractaldim::fd.estim.dctII(cbind(latitude,longitude),plot.loglog=TRUE, plot.allpoints=TRUE, nlags="auto")
+  return(list(plot1, fractalplot))
+}
 ```
-  
-The three timepoints vary slightly in terms of Fractal D, indicating that there may be a difference in how the animals are visiting their feeding trees over time. Given the middle timepoint had the lowest fractal D, it is possible that at that time of year the animals may be moving around from tree to tree less than at the other two times. 
 
 ## Conclusion
 We've provided some examples of how to read in GPX data using **{sf}**, estimate animal home ranges using **{sp}** objects and **{adehabitatHR}**, map geospatial data using **{ggmap}**, and use fractal analysis to analyze space use patterns with **{fractaldim}**, but we've just barely scratched the surface of what can be done with geospatial data in R! Here are some more resources:  
@@ -241,3 +232,4 @@ We've provided some examples of how to read in GPX data using **{sf}**, estimate
 https://rspatial.org/  
 https://geocompr.robinlovelace.net/  
 https://r-spatial.github.io/sf/articles/sf1.html
+https://jamesepaterson.github.io/jamespatersonblog/01_trackingworkshop_formatting (our ggmap code is adapted from here)
